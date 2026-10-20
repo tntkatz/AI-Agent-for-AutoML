@@ -1,6 +1,6 @@
 # Alfa Hack: AI-Agent for AutoML
 
-Аавтономный AI-агент для автоматического решения ML-задач (AutoML / AutoResearch)
+Автономный AI-агент для автоматического решения ML-задач (AutoML / AutoResearch)
 
 ---
 
