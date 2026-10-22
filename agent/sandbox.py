@@ -8,17 +8,19 @@ import numpy as np
 import pandas as pd
 
 MAX_LOG_CHARS = 8000
-DEFAULT_TIMEOUT_SEC = 900 
+DEFAULT_TIMEOUT_SEC = 180
+
 
 def _truncate_log(text: str, max_chars: int = MAX_LOG_CHARS) -> str:
     if not text:
         return ""
     if len(text) > max_chars:
         return (
-            f"[Лог обрезан, показаны последние {max_chars} символов]\n"
+            f"... [Log truncated, showing last {max_chars} characters] ...\n"
             + text[-max_chars:]
         )
     return text
+
 
 def run_python(
     code: str,
@@ -29,7 +31,12 @@ def run_python(
 
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
-    project_root = str(Path(__file__).resolve().parent.parent)
+
+    current_dir = Path(__file__).resolve().parent
+    project_root = str(
+        current_dir.parent if current_dir.name == "agent" else current_dir
+    )
+
     existing_pythonpath = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = (
         f"{project_root}{os.pathsep}{existing_pythonpath}"
@@ -86,18 +93,18 @@ def run_python(
         )
 
         error_msg = (
-            f"TimeoutError: Выполнение кода прервано по таймауту ({timeout_sec} сек.). "
-            f"Возможно, код содержит бесконечный цикл или слишком долгое обучение.\n"
+            f"TimeoutError: Execution timed out after {timeout_sec} seconds. "
+            f"The script may contain an infinite loop or excessive training time.\n"
         )
         if stdout_str:
-            error_msg += f"--- STDOUT до таймаута ---\n{stdout_str}\n"
+            error_msg += f"--- STDOUT before timeout ---\n{stdout_str}\n"
         if stderr_str:
-            error_msg += f"--- STDERR до таймаута ---\n{stderr_str}\n"
+            error_msg += f"--- STDERR before timeout ---\n{stderr_str}\n"
 
         return False, _truncate_log(error_msg)
 
     except Exception as exc:
-        return False, f"SandboxExecutionError: Не удалось запустить процесс: {str(exc)}"
+        return False, f"SandboxExecutionError: Failed to launch process: {str(exc)}"
 
     finally:
         if tmp_path.exists():
@@ -115,55 +122,54 @@ def validate_submission(
     sample_sub_path = Path(sample_sub_path)
 
     if not sub_path.exists():
-        return False, f"Ошибка валидации: Файл сабмита не найден ({sub_path})."
+        return False, f"Validation error: Submission file not found ({sub_path})."
 
     if not sample_sub_path.exists():
-        return False, f"Ошибка валидации: Эталонный файл не найден ({sample_sub_path})."
+        return False, f"Validation error: Sample submission file not found ({sample_sub_path})."
 
     if sub_path.stat().st_size == 0:
-        return False, f"Ошибка валидации: Файл {sub_path.name} полностью пуст."
+        return False, f"Validation error: File {sub_path.name} is empty."
 
     try:
         sub_df = pd.read_csv(sub_path)
         sample_df = pd.read_csv(sample_sub_path)
     except Exception as exc:
-        return False, f"Ошибка чтения CSV файла: {str(exc)}"
+        return False, f"CSV read error: {str(exc)}"
 
     if list(sub_df.columns) != list(sample_df.columns):
         return (
             False,
-            f"Несовпадение колонок. Ожидалось: {list(sample_df.columns)}, получено: {list(sub_df.columns)}.",
+            f"Column mismatch. Expected: {list(sample_df.columns)}, got: {list(sub_df.columns)}.",
         )
 
     if len(sub_df) != len(sample_df):
         return (
             False,
-            f"Несовпадение количества строк. Ожидалось: {len(sample_df)}, получено: {len(sub_df)}.",
+            f"Row count mismatch. Expected: {len(sample_df)}, got: {len(sub_df)}.",
         )
-
-    id_col = sample_df.columns[0]
-    if not sub_df[id_col].equals(sample_df[id_col]):
-        if (sub_df[id_col].values != sample_df[id_col].values).any():
-            return (
-                False,
-                f"Колонка идентификатора '{id_col}' не совпадает с sample_submission.csv (нарушен порядок или значения).",
-            )
 
     if sub_df.isna().any().any():
         nan_cols = sub_df.columns[sub_df.isna().any()].tolist()
-        return False, f"Обнаружены пустые значения (NaN/None) в колонках: {nan_cols}."
+        return False, f"Found missing values (NaN/None) in columns: {nan_cols}."
+
+    id_col = sample_df.columns[0]
+    if not (sub_df[id_col].astype(str).values == sample_df[id_col].astype(str).values).all():
+        return (
+            False,
+            f"Identifier column '{id_col}' does not match sample_submission.csv (order or values differ).",
+        )
 
     object_cols = sub_df.select_dtypes(include=["object", "string"]).columns
     for col in object_cols:
         if (sub_df[col].astype(str).str.strip() == "").any():
-            return False, f"Обнаружены пустые строки в текстовой колонке '{col}'."
+            return False, f"Found empty string values in column: '{col}'."
 
     numeric_cols = sub_df.select_dtypes(include=[np.number]).columns
     for col in numeric_cols:
         if np.isinf(sub_df[col]).any():
             return (
                 False,
-                f"Обнаружены бесконечные значения (+inf / -inf) в колонке '{col}'.",
+                f"Found infinite values (+inf / -inf) in column: '{col}'.",
             )
 
-    return True, "Файл submission.csv успешно прошел все проверки."
+    return True, "submission.csv successfully passed all validation checks."
