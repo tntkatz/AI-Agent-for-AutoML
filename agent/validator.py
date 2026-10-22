@@ -13,7 +13,7 @@ def compute_metric(y_true: np.ndarray, y_pred: np.ndarray, task_type: str) -> fl
     elif task_type == "classification":
         return float(f1_score(y_true, y_pred, average="macro"))
     else:
-        raise ValueError(f"Неизвестный тип задачи: {task_type}")
+        raise ValueError(f"Unknown task type: {task_type}")
 
 
 def evaluate_model(
@@ -65,7 +65,7 @@ def evaluate_model(
 
 
 if __name__ == "__main__":
-    print("1. ПРОВЕРКА НА РЕГРЕССИИ")
+    print("1. Regression testing")
     reg_train = Path("data/regression/train.csv")
     if reg_train.exists():
         df_reg = pd.read_csv(reg_train)
@@ -80,12 +80,12 @@ if __name__ == "__main__":
             return lgb.LGBMRegressor(n_estimators=50, n_jobs=8, random_state=42, verbose=-1)
 
         score_reg, _, folds_reg = evaluate_model(make_lgb_reg, X_reg, y_reg, task_type="regression")
-        print(f"Скор по фолдам (RMSE): {[round(s, 3) for s in folds_reg]}")
-        print(f"Итоговый OOF RMSE: {score_reg:.4f}")
+        print(f"RMSE: {[round(s, 3) for s in folds_reg]}")
+        print(f"OOF RMSE: {score_reg:.4f}")
     else:
-        print(f"Файл {reg_train} не найден.")
+        print(f"File {reg_train} not found.")
 
-    print("\n2. ПРОВЕРКА НА КЛАССИФИКАЦИИ")
+    print("\n2. Classification testing")
     cls_train = Path("data/classification/train.csv")
     if cls_train.exists():
         df_cls = pd.read_csv(cls_train)
@@ -100,7 +100,7 @@ if __name__ == "__main__":
             return lgb.LGBMClassifier(n_estimators=50, n_jobs=8, random_state=42, verbose=-1)
 
         score_cls, _, folds_cls = evaluate_model(make_lgb_cls, X_cls, y_cls, task_type="classification")
-        print(f"Скор по фолдам (Macro F1): {[round(s, 3) for s in folds_cls]}")
-        print(f"Итоговый OOF Macro F1: {score_cls:.4f}")
+        print(f"Macro F1: {[round(s, 3) for s in folds_cls]}")
+        print(f"OOF Macro F1: {score_cls:.4f}")
     else:
-        print(f"Файл {cls_train} не найден.")
+        print(f"File {cls_train} not found.")
