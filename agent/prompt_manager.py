@@ -2,14 +2,20 @@ import os
 import re
 import pandas as pd
 
-def get_system_prompt(target_col: str) -> str:
+def get_system_prompt(target_col: str, task_type: str, metric: str, eda_summary: str) -> str:
     return f"""Ты — опытный Data Scientist и AI-инженер признаков (Feature Engineer). 
 Твоя задача — написать функцию `add_features(df)`, которая принимает pandas DataFrame, генерирует новые признаки и возвращает обновленный DataFrame.
+
+Тип задачи: {task_type}
+Целевая метрика: {metric}
+
+Сводка по данным (EDA Summary):
+{eda_summary}
 
 КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО использовать, упоминать, преобразовывать или удалять колонку таргета '{target_col}' внутри функции `add_features`. В тестовой выборке (test.csv) этой колонки не будет, и скрипт упадет с ошибкой KeyError, что приведет к дисквалификации!
 Колонка '{target_col}' должна остаться в датафрейме в первозданном виде для последующей валидации.
 
-Верни ТОЛЬКО готовый код функции на Python без лишних рассуждений."""
+Сформулируй 2-3 гипотезы и реализуй их в коде. Верни ТОЛЬКО готовый код функции `add_features(df)` на Python без лишних рассуждений."""
 
 def get_self_correction_prompt(target_col: str, error_trace: str) -> str:
     return f"""Твой предыдущий код функции `add_features(df)` завершился с ошибкой или показал ухудшение метрики.
@@ -25,10 +31,13 @@ def extract_python_code(text: str) -> str:
         return match.group(1).strip()
     return text.strip()
 
-def build_experiment_code(generated_function: str, target_col: str, train_path: str = "train.csv") -> str:
+def build_experiment_code(generated_function: str, target_col: str, task_type: str, train_path: str = "train.csv") -> str:
     wrapper_script = f"""
+import sys
 import pandas as pd
 import warnings
+import lightgbm as lgb
+from sklearn.preprocessing import LabelEncoder
 from validator import evaluate_model
 
 warnings.filterwarnings('ignore')
@@ -46,23 +55,35 @@ def main():
         df = add_features(df)
     except Exception as e:
         print(f"EXPERIMENT_FAILED: Error in add_features - {{str(e)}}")
-        return
+        sys.exit(1)
 
     # 3. Separate features and target
     if '{target_col}' not in df.columns:
         print(f"EXPERIMENT_FAILED: KeyError - Target column '{target_col}' was dropped or modified by add_features.")
-        return
+        sys.exit(1)
         
     y = df['{target_col}']
-    X = df.drop(columns=['{target_col}'])
+    X = df.drop(columns=['{target_col}', 'id'], errors='ignore')
+    
+    # Encode categorical features
+    for col in X.select_dtypes(include=["object"]).columns:
+        le = LabelEncoder()
+        X[col] = le.fit_transform(X[col].fillna("__missing__").astype(str))
+        
+    def model_factory():
+        if '{task_type}' == 'classification':
+            return lgb.LGBMClassifier(n_estimators=50, n_jobs=8, random_state=42, verbose=-1)
+        else:
+            return lgb.LGBMRegressor(n_estimators=50, n_jobs=8, random_state=42, verbose=-1)
     
     # 4. Evaluate the model
     try:
-        score = evaluate_model(X, y)
+        score, _, _ = evaluate_model(model_factory, X, y, task_type='{task_type}')
         # 5. Output strictly in English for the agent to parse
         print(f"EXPERIMENT_SCORE: {{score}}")
     except Exception as e:
         print(f"EXPERIMENT_FAILED: Error during evaluation - {{str(e)}}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
