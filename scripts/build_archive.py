@@ -5,8 +5,12 @@ MAX_SIZE_MB = 100.0
 ARCHIVE_NAME = 'submission.zip'
 
 def main():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.abspath(os.path.join(script_dir, '..'))
+    os.chdir(project_root)
+
     if not os.path.exists('requirements.txt'):
-        print("Error: The script must be run from the project root.")
+        print("Error: 'requirements.txt' not found in the project root.")
         return
 
     files_to_zip = []
