@@ -16,7 +16,7 @@ def main():
     task_dir = task_file.parent
     print(f"Запуск пайплайна для задачи в каталоге: {task_dir}")
 
-    run_fast_baseline(task_dir)
+    run_fast_baseline(task_dir, task_file)
 
 
 if __name__ == "__main__":
