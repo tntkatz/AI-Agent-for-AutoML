@@ -78,7 +78,8 @@ def main():
     
     # 4. Evaluate the model
     try:
-        score, _, _ = evaluate_model(model_factory, X, y, task_type='{task_type}')
+        # Безопасная распаковка: заберет первый аргумент в score, а остальные в _
+        score, *_ = evaluate_model(model_factory, X, y, task_type='{task_type}')
         # 5. Output strictly in English for the agent to parse
         print(f"EXPERIMENT_SCORE: {{score}}")
     except Exception as e:
@@ -94,7 +95,7 @@ def build_dataset_summary(train_path: str = "train.csv", dict_path: str = "data_
     if os.path.exists(dict_path):
         try:
             with open(dict_path, 'r', encoding='utf-8') as f:
-                return f"Data Dictionary (from file):\n{f.read()}"
+                return f"Data Dictionary (from file):\n{f.read()[:3500]}"
         except Exception as e:
             print(f"Warning: Could not read {dict_path} ({e}). Falling back to train.csv scanning.")
 
@@ -113,7 +114,7 @@ def build_dataset_summary(train_path: str = "train.csv", dict_path: str = "data_
             missing_val = missing_percentages[col]
             summary_lines.append(f"{col.ljust(25)} | {dtype_str.ljust(15)} | {missing_val:.2f}%")
             
-        return "\n".join(summary_lines)
+        return "\n".join(summary_lines)[:3500]
         
     except Exception as e:
         return f"Error: Could not generate dataset summary. Ensure {train_path} exists. Details: {str(e)}"
