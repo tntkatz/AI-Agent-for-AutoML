@@ -1,121 +1,56 @@
-# Alfa Hack: AI-Agent for AutoML
+# AI-Agent-for-AutoML
 
-Автономный AI-агент для автоматического решения ML-задач (AutoML / AutoResearch)
+Automated feature engineering and tabular model pipeline driven by an LLM loop. 
 
----
+The tool generates baseline predictions, adds domain/statistical interaction features, prompts an LLM to propose new features in an iterative loop, validates them using out-of-fold CV score, and ensembles the final models.
 
-## 1. Быстрый старт (Локальное окружение)
+## How it works
 
-### Требования
-* Python 3.12
-* Git
+1. Runs a fast LightGBM baseline on raw data to establish the benchmark score.
+2. Generates initial heuristic features (symmetric column pairs, group statistics, ratios).
+3. Iteratively queries an LLM to generate `add_features(df)` Python functions:
+   - Wraps generated features in AST-based `try/except` to prevent runtime crashes.
+   - Evaluates the new feature set with 5-fold CV.
+   - Keeps features only if the validation score strictly improves.
+   - Drops features with zero gain importance.
+4. Trains an ensemble (LightGBM, CatBoost, XGBoost) and blends predictions via Nelder-Mead optimization.
+5. Saves the best verified predictions to `submission.csv`.
 
-### Установка зависимостей
+## Requirements
+
+- Python 3.10+
+- OpenAI-compatible API endpoint (Qwen, DeepSeek, etc.)
+
 ```bash
-# 1. Клонирование репозитория
-git clone https://github.com/tntkatz/AI-Agent-for-AutoML
-cd AI-Agent-for-AutoML
-
-# 2. Создание и активация виртуального окружения
-python3 -m venv .venv
-source .venv/bin/activate
-
-# 3. Установка зафиксированных пакетов
 pip install -r requirements.txt
 ```
 
-### Размещение датасетов
-Папка `data/` добавлена в `.gitignore` и не отслеживается гитом. Скачанные папки с данными положите в локальную директорию `data/`:
-```text
-data/
-├── regression/
-│   ├── train.csv
-│   ├── test.csv
-│   ├── data_dictionary.csv
-│   ├── sample_submission.csv
-│   └── task.md
-└── classification/
-    ├── train.csv
-    ├── test.csv
-    ├── data_dictionary.csv
-    ├── sample_submission.csv
-    └── task.md
-```
+## Usage
 
-### Запуск текущего бейзлайна
-Скрипт принимает аргументом путь к файлу описания задачи `task.md`:
+Set environment variables for the LLM provider:
+
 ```bash
-# Тест регрессии (энергопотребление)
-python solution.py data/regression/task.md
-
-# Тест классификации (кибератаки)
-python solution.py data/classification/task.md
-```
-После завершения работы в каталоге соответствующей задачи сформируется валидный файл `submission.csv`.
-
----
-
-## 2. Структура проекта
-
-```text
-.
-├── solution.py            # Единая точка входа для платформы проверки
-├── baseline.py            # Исходный референс FastMCP от организаторов
-├── requirements.txt       # Список зависимостей среды Docker
-├── agent/                 # Пакет с модулями агента
-│   ├── __init__.py
-│   └── baseline_model.py  # Детерминированный Safety Baseline (LightGBM)
-├── scripts/               # Вспомогательные скрипты упаковки и тестов
-└── data/                  # Локальные датасеты (в Git НЕ коммитить!)
+export LLM_API_KEY="your_api_key"
+export LLM_BASE_URL="[https://api.your-provider.com/v1](https://api.your-provider.com/v1)"
+export LLM_MODEL="Qwen/Qwen2.5-Coder-32B-Instruct"
 ```
 
----
+Run the pipeline by pointing it to a directory containing `train.csv`, `test.csv`, and `sample_submission.csv`:
 
-## 3. Git Workflow для команды (ПРАВИЛА РАБОТЫ)
+```bash
+python main.py /path/to/data_dir
+```
 
-Чтобы не ломать рабочий код и не разгребать бесконечные merge-конфликты, соблюдаем единый регламент:
+Optional: provide `data_dictionary.csv` in the same directory to give the LLM column descriptions.
 
-### Главные запреты
-1. **Категорически запрещено пушить напрямую в `main`!** Ветка `main` всегда должна оставаться стабильной и запускаемой.
-2. **Никогда не добавлять в Git файлы `.csv`, архивы `.zip` и API-ключи!** Всегда проверяйте `git status` перед коммитом.
+## Configuration
 
-### Пошаговый цикл работы над задачей
+| Variable | Default | Description |
+|---|---|---|
+| `MAX_ITERATIONS` | `15` | Maximum LLM feature generation iterations |
+| `TASK_DIR` | `.` | Target data directory |
+| `LLM_TIMEOUT` | `60` | Timeout per request (seconds) |
 
-1. **Синхронизация с `main` перед стартом:**
-   ```bash
-   git checkout main
-   git pull origin main
-   ```
+## License
 
-2. **Создание новой ветки под свою задачу:**
-   Используем префиксы:
-   * `feat/короткое-название` — новая функциональность
-   * `fix/короткое-название` — исправление бага
-   ```bash
-   git checkout -b feat/task-name
-   ```
-
-3. **Фиксация изменений:**
-   Добавляйте только те файлы, которые реально меняли (не используйте слепой `git add .`):
-   ```bash
-   git status
-   git add agent/baseline_model.py
-   git commit -m "feat: add cross-validation module"
-   git push -u origin feat/task-name
-   ```
-
-4. **Pull Request (PR):**
-   * Зайдите на GitHub в свой репозиторий.
-   * Нажмите кнопку **Compare & pull request**.
-   * Опишите, что было сделано и проверено.
-   * Слияние в `main` выполняется только после просмотра кода тиммейтом.
-   * После слияния удаляйте ветку на GitHub.
-
----
-
-## 4. Распределение задач (Board Issues)
-
-* **DE 1:** Клиент к API модели Qwen3.8-27B, учет лимитов токенов/бюджета (600 руб.), экспоненциальный retry при сбоях сети.
-* **DE 2:** Изолированный runner выполнения кода (`subprocess`) с перехватом трейсбеков, таймер отсечки (2.5 часа), валидатор схемы `submission.csv`.
-* **DS 1:** Локальный модуль кросс-валидации (5-fold KFold / StratifiedKFold) с точным расчетом целевых метрик (RMSE, Macro F1).
-* **DS 2:** Генератор компактного профиля данных (EDA) из `data_dictionary.csv`, системные промпты для цикла AutoResearch (генерация гипотез и признаков).
+MIT
