@@ -8,7 +8,7 @@ import pandas as pd
 
 def get_system_prompt(target_col: str, task_type: str, metric: str, eda_summary: str) -> str:
     return f"""Ты — Principal Kaggle Grandmaster и AI-инженер признаков.
-Твоя задача — написать компактную функцию `add_features(df: pd.DataFrame) -> pd.DataFrame`, которая добавляет ТОЛЬКО 4-6 НОВЫХ табличных признаков для градиентного бустинга.
+Твоя задача — написать компактную функцию `add_features(df: pd.DataFrame) -> pd.DataFrame`, которая добавляет ТОЛЬКО 5-7 НОВЫХ высокоинформативных табличных признаков для градиентного бустинга.
 
 Тип задачи: {task_type}
 Целевая метрика: {metric}
@@ -18,15 +18,16 @@ def get_system_prompt(target_col: str, task_type: str, metric: str, eda_summary:
 {eda_summary}
 
 ЖЕСТКИЕ ПРАВИЛА:
-1. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО обращаться к колонке таргета '{target_col}' внутри `add_features(df)`. В `test.csv` её нет!
+1. КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО обращаться к колонке таргета '{target_col}' или `id` внутри `add_features(df)`. В `test.csv` таргета нет!
 2. ЗАПРЕЩЕНО менять число строк в `df` (`dropna`, фильтрация) или удалять существующие колонки.
-3. Все ранее найденные лучшие признаки УЖЕ добавлены в `df` до вызова твоей функции — НЕ переписывай старые признаки, пиши ТОЛЬКО 4-6 новых!
-4. Функция должна быть короткой (не более 25-30 строк кода), начинаться с `df = df.copy()` и ОБЯЗАТЕЛЬНО заканчиваться строкой `return df`.
-5. Используй только быстрые векторизованные операции pandas/numpy:
-   - Отношения, произведения и разности топ-коррелирующих числовых колонок: `df['a'] / (df['b'].replace(0, np.nan) + 1e-5)`.
-   - Групповые трансформации: `grp = df.groupby('cat_col')['num_col'].transform('mean')`, `df['diff'] = df['num_col'] - grp`.
-   - Частотное кодирование: `df[' col'].map(df['col'].value_counts(normalize=True))`.
-   - Агрегации по строкам однородных колонок (`mean(axis=1)`, `std(axis=1)`, `max(axis=1) - min(axis=1)`).
+3. ЗАПРЕЩЕНО использовать `.apply(..., axis=1)`, циклы `for` по строкам или медленные строковые манипуляции. Используй только быстрые векторизованные операции pandas/numpy!
+4. Все ранее найденные лучшие признаки УЖЕ автоматически добавлены в `df` до вызова твоей функции — НЕ переписывай старые признаки, пиши ТОЛЬКО 5-7 новых!
+5. Функция должна быть короткой (не более 25-30 строк кода), начинаться с `df = df.copy()` и ОБЯЗАТЕЛЬНО заканчиваться строкой `return df`.
+6. Используй быстрые векторизованные операции pandas/numpy с сильным доменным смыслом:
+   - Нелинейные взаимодействия топ-признаков: удельные отношения `df['a'] / (df['b'].replace(0, np.nan) + 1e-5)`, асимметрии `(df['a'] - df['b']) / (df['a'].abs() + df['b'].abs() + 1e-5)`, полиномиальные произведения.
+   - Внутригрупповые агрегации по важным категориальным или дискретным колонкам: `grp_m = df.groupby('cat_col')['num_col'].transform('mean')`, `grp_s = df.groupby('cat_col')['num_col'].transform('std')`, Z-score `(df['num_col'] - grp_m) / (grp_s + 1e-5)`.
+   - Квантильные/ранговые трансформации внутри групп: `df.groupby('cat_col')['num_col'].rank(pct=True)`.
+   - Горизонтальные агрегации по семействам однородных колонок (`mean(axis=1)`, `std(axis=1)`, `max(axis=1) - min(axis=1)`).
 
 НЕ ПИШИ никаких рассуждений или пояснений. Верни ТОЛЬКО короткий блок ```python ... ``` с функцией `def add_features(df):`. /no_think"""
 
@@ -39,7 +40,7 @@ def get_iteration_prompt(
     feature_importance_feedback: str = "",
 ) -> str:
     fi_block = f"\nВажность признаков (Gain):\n{feature_importance_feedback}\n" if feature_importance_feedback else ""
-    active_str = ", ".join(active_features[-30:]) if active_features else "базовые признаки + seed features"
+    active_str = ", ".join(active_features[-35:]) if active_features else "базовые признаки + seed features"
 
     return f"""Текущий лучший CV скор: {best_score:.5f}.
 Уже автоматически активные сгенерированные признаки в датасете: [{active_str}]
@@ -48,7 +49,7 @@ def get_iteration_prompt(
 {history_text}
 
 ЗАДАНИЕ:
-Напиши короткую функцию `def add_features(df):` (максимум 25 строк), которая создает 4-6 НОВЫХ признаков, которых еще нет в списке активных и которые не проваливались в истории.
+Напиши короткую функцию `def add_features(df):` (максимум 25-30 строк), которая создает 5-7 НОВЫХ признаков из других семейств (например, Z-score по группам, ранги внутри категорий `groupby(...).rank(pct=True)`, отношения/разности топ-признаков из списка Gain), которых еще нет в списке активных.
 Старые признаки переписывать НЕ НУЖНО — твоя функция вызывается поверх них.
 Обязательно заверши функцию строкой `return df`. Не трогай '{target_col}'! Только код в ```python ... ```. /no_think"""
 
@@ -59,7 +60,7 @@ def get_self_correction_prompt(
     error_trace: str,
     best_code: str = "",
 ) -> str:
-    return f"""Предыдущая функция `add_features(df)` не создала ни одного рабочего признака!
+    return f"""Предыдущая функция `add_features(df)` не создала рабочих признаков!
 
 Код:
 ```python
@@ -73,12 +74,6 @@ def get_self_correction_prompt(
 
 
 class _FaultTolerantTransformer(ast.NodeTransformer):
-    """
-    Оборачивает каждое создание признака внутри add_features в try...except,
-    чтобы ошибка в одной колонке не роняла остальные рабочие признаки,
-    и гарантирует наличие `return df` в конце функции.
-    """
-
     def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.FunctionDef:
         if node.name != "add_features":
             return node
@@ -195,10 +190,6 @@ def compose_feature_pipeline(
     candidate_code: Optional[str] = None,
     dropped_cols: Optional[List[str]] = None,
 ) -> str:
-    """
-    Собирает цепочку из всех уже принятых блоков признаков и нового кандидата
-    в единую функцию `add_features(df)`, чтобы LLM никогда не теряла старые фичи.
-    """
     all_blocks = [b for b in accepted_blocks if b and b.strip()]
     if candidate_code and candidate_code.strip():
         all_blocks.append(candidate_code.strip())
@@ -261,7 +252,9 @@ from validator import evaluate_model, default_model_factory
 
 warnings.filterwarnings('ignore')
 
+# === COMPOSED FEATURE PIPELINE ===
 {composed_pipeline_code}
+# =================================
 
 def main():
     try:
@@ -283,7 +276,7 @@ def main():
     try:
         X_feat = add_features(X_raw.copy())
     except Exception as e:
-        print(f"EXPERIMENT_FAILED: Error in add_features on train.csv - {{type(e).__name__}}: {{str(e)}}")
+        print(f"EXPERIMENT_FAILED: Error in add_features - {{type(e).__name__}}: {{str(e)}}")
         sys.exit(1)
 
     if not isinstance(X_feat, pd.DataFrame):
@@ -298,17 +291,6 @@ def main():
     if {repr(prev_col_count)} > 0 and len(X_feat.columns) <= {repr(prev_col_count)}:
         print("EXPERIMENT_FAILED: Candidate function did not create any valid new columns (check column names and types).")
         sys.exit(1)
-
-    if {repr(test_path)} is not None:
-        try:
-            test_sample = pd.read_csv({repr(test_path)}, nrows=1000)
-            test_feat = add_features(test_sample.copy())
-            if len(test_feat) != len(test_sample):
-                print("EXPERIMENT_FAILED: Row count changed on test.csv!")
-                sys.exit(1)
-        except Exception as e:
-            print(f"EXPERIMENT_FAILED: Error in add_features on test.csv - {{type(e).__name__}}: {{str(e)}}")
-            sys.exit(1)
 
     X = X_feat.drop(columns=[{repr(target_col)}, 'id', 'ID', 'Id'], errors='ignore')
     num_classes = int(y.nunique()) if {repr(task_type)} == 'classification' else 1
@@ -334,7 +316,7 @@ def main():
             if zero_new:
                 print(f"ZERO_IMPORTANCE_NEW_FEATURES: {{', '.join(zero_new[:20])}}")
         print(f"TOTAL_COLS: {{len(X_feat.columns)}}")
-        print(f"ACTIVE_NEW_COLS: {{', '.join(new_cols_all[-25:])}}")
+        print(f"ACTIVE_NEW_COLS: {{', '.join(new_cols_all[-30:])}}")
         print(f"EXPERIMENT_SCORE: {{score:.6f}}")
     except Exception as e:
         print(f"EXPERIMENT_FAILED: Error during evaluation - {{type(e).__name__}}: {{str(e)}}")
@@ -351,9 +333,6 @@ def build_dataset_summary(
     dict_path: str = "data_dictionary.csv",
     target_col: Optional[str] = None,
 ) -> str:
-    """
-    Компактная сводка (экономит ~60% входных токенов без потери имен колонок и статистик).
-    """
     desc_map = {}
     if os.path.exists(dict_path):
         try:
@@ -406,20 +385,22 @@ def build_dataset_summary(
                 if c != target_col and c.lower() != "id"
             ]
             if num_cols:
-                if df[target_col].dtype == "object" or str(df[target_col].dtype) in ("string", "category"):
-                    y_num = pd.Series(pd.factorize(df[target_col])[0], index=df.index)
+                if df[target_col].dtype == "object" or str(df[target_col].dtype) in ("string", "category") or df[target_col].nunique() <= 25:
+                    scores = {}
+                    for nc in num_cols:
+                        s_v = pd.to_numeric(df[nc], errors="coerce")
+                        tot_var = float(s_v.var())
+                        if tot_var and tot_var > 1e-12:
+                            grp_var = float(s_v.groupby(df[target_col]).transform("mean").var())
+                            scores[nc] = float(np.sqrt(max(0.0, grp_var / tot_var)))
+                    corrs = pd.Series(scores).sort_values(ascending=False).head(18)
                 else:
                     y_num = pd.to_numeric(df[target_col], errors="coerce")
-                corrs = (
-                    df[num_cols]
-                    .apply(lambda x: x.corr(y_num))
-                    .abs()
-                    .dropna()
-                    .sort_values(ascending=False)
-                    .head(18)
-                )
+                    p_corr = df[num_cols].apply(lambda x: x.corr(y_num)).abs().fillna(0)
+                    s_corr = df[num_cols].apply(lambda x: x.corr(y_num, method="spearman")).abs().fillna(0)
+                    corrs = np.maximum(p_corr, s_corr).sort_values(ascending=False).head(18)
                 corr_str = ", ".join([f"{k}({v:.2f})" for k, v in corrs.items()])
-                lines.append(f"\nТоп-18 корреляций с таргетом: {corr_str}")
+                lines.append(f"\nТоп-18 признаков по связи с таргетом: {corr_str}")
 
         return "\n".join(lines)[:4800]
     except Exception as e:

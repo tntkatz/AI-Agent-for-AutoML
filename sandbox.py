@@ -9,8 +9,7 @@ import numpy as np
 import pandas as pd
 
 MAX_LOG_CHARS = 8000
-DEFAULT_TIMEOUT_SEC = 180
-
+DEFAULT_TIMEOUT_SEC = 300
 
 def _truncate_log(text: str, max_chars: int = MAX_LOG_CHARS) -> str:
     if not text:

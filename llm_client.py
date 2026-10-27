@@ -42,7 +42,7 @@ class QwenClient:
         self.total_cost_rub = 0.0
 
         self.budget_limit_rub = 600.0
-        self.cost_warning_threshold = 575.0
+        self.cost_warning_threshold = 592.0
 
         self.start_time = start_time or time.time()
         self.max_session_time_sec = 2 * 3600 + 35 * 60
@@ -66,7 +66,7 @@ class QwenClient:
                             return float(data["spend"])
                         info = data.get("info")
                         if isinstance(info, dict) and "spend" in info and info["spend"] is not None:
-                            return float(info["info"]["spend"]) if "info" in info else float(info["spend"])
+                            return float(info["spend"])
         except Exception as e:
             logger.debug(f"Balance fetch warning: {e}")
         return self.total_cost_rub
@@ -79,7 +79,7 @@ class QwenClient:
         self.total_cost_rub = await self.fetch_current_spend()
 
         if self.total_cost_rub >= self.cost_warning_threshold:
-            logger.warning(f"Budget threshold exceeded: {self.total_cost_rub:.2f} RUB spent.")
+            logger.warning(f"Budget threshold approached: {self.total_cost_rub:.2f} RUB spent.")
             return False
 
         return True
@@ -115,7 +115,7 @@ class QwenClient:
                     model=self.model_name,
                     messages=messages,
                     temperature=temperature,
-                    max_tokens=4096,
+                    max_tokens=8192,
                     extra_body={"chat_template_kwargs": {"enable_thinking": False}},
                 )
             except APIStatusError as inner_e:
@@ -124,7 +124,7 @@ class QwenClient:
                         model=self.model_name,
                         messages=messages,
                         temperature=temperature,
-                        max_tokens=6144,
+                        max_tokens=8192,
                     )
                 else:
                     raise inner_e

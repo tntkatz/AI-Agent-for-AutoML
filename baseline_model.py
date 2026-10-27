@@ -5,7 +5,7 @@ from typing import Dict, Optional, Tuple
 import pandas as pd
 import numpy as np
 
-from validator import evaluate_model, default_model_factory, optimize_class_multipliers
+from validator import evaluate_model, default_model_factory
 from sandbox import validate_submission
 
 
@@ -102,6 +102,9 @@ def atomic_save_submission(
     sub_path: Path,
     sample_path: Path,
 ) -> bool:
+    """
+    Атомарное сохранение submission.csv через временный файл с полной валидацией.
+    """
     tmp_path = sub_path.with_suffix(".csv.tmp")
     try:
         submission_df.to_csv(tmp_path, index=False)
