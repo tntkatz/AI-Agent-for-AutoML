@@ -102,9 +102,6 @@ def atomic_save_submission(
     sub_path: Path,
     sample_path: Path,
 ) -> bool:
-    """
-    Атомарное сохранение submission.csv через временный файл с полной валидацией.
-    """
     tmp_path = sub_path.with_suffix(".csv.tmp")
     try:
         submission_df.to_csv(tmp_path, index=False)

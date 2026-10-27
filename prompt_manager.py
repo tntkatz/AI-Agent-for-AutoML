@@ -252,9 +252,7 @@ from validator import evaluate_model, default_model_factory
 
 warnings.filterwarnings('ignore')
 
-# === COMPOSED FEATURE PIPELINE ===
 {composed_pipeline_code}
-# =================================
 
 def main():
     try:
